@@ -4,11 +4,13 @@ require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const admin = require("firebase-admin");
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8"
+);
 const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
 
 const app = express();
@@ -28,7 +30,7 @@ const verifyToken = async (req, res, next) => {
   try {
     const idToken = token.split(" ")[1];
     const decoded = await admin.auth().verifyIdToken(idToken);
-    console.log("decoded in the token", decoded);
+    // console.log("decoded in the token", decoded);
     req.decoded_email = decoded.email;
     next();
   } catch (err) {
@@ -55,6 +57,7 @@ async function run() {
     const db = client.db("Scholarship-Management-System");
     const userCollection = db.collection("user");
     const universityCollection = db.collection("university");
+    const reviewCollection = db.collection("review");
 
     // user related Api
     app.post("/users", async (req, res) => {
@@ -74,8 +77,7 @@ async function run() {
 
     // university related Api
 
-
-    app.get("/scholarships/cheapest",verifyToken, async (req, res) => {
+    app.get("/scholarships/cheapest", async (req, res) => {
       const result = await universityCollection
         .find({})
         .sort({ scholarshipPostDate: 1 })
@@ -123,9 +125,100 @@ async function run() {
 
       res.send(result); // এখন আর এরর আসবে না
     });
+    // 6934201901492016fbc39033
+    app.get("/scholarships/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const scholarship = await universityCollection.findOne(query);
+
+        if (!scholarship) {
+          return res.status(404).send({ message: "Scholarship not found" });
+        }
+
+        res.send(scholarship);
+      } catch (error) {
+        res.status(500).send({ message: "Invalid ID or server error" });
+      }
+    });
   } catch (err) {
     console.error(err);
   }
+
+  // review collection
+
+  app.get("/allreview", async (req, res) => {
+    try {
+      const { email } = req.query;
+      let query = {};
+
+      if (email) {
+        query.userEmail = email;
+      }
+
+      const reviews = await reviewCollection
+        .find(query)
+        .sort({ postedAt: -1 })
+        .toArray();
+
+      res.send(reviews);
+    } catch (error) {
+      res.status(500).send({ message: "Server error" });
+    }
+  });
+
+  app.get("/review/:id", async (req, res) => {
+    const id = req.params.id;
+
+    try {
+      const reviewById = await reviewCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (reviewById) {
+        return res.send(reviewById);
+      }
+    } catch (error) {}
+    const reviewsByEmail = await reviewCollection
+      .find({ userEmail: id })
+      .sort({ postedAt: -1 })
+      .toArray();
+    if (reviewsByEmail.length === 0) {
+      return res.status(404).send({ message: "No review found" });
+    }
+
+    res.send(reviewsByEmail);
+  });
+
+  app.post("/review", async (req, res) => {
+    try {
+      const reviewData = req.body;
+
+      const newReview = {
+        userName: reviewData.userName,
+        userEmail: reviewData.userEmail,
+        userPhoto: reviewData.userPhoto || "", // না থাকলে খালি
+        universityName: reviewData.universityName,
+        scholarshipName: reviewData.scholarshipName || "General Review",
+        rating: Number(reviewData.rating), // 1 থেকে 5
+        reviewText: reviewData.reviewText,
+        postedAt: new Date(),
+      };
+
+      const result = await reviewCollection.insertOne(newReview);
+
+      res.send({
+        success: true,
+        message: "Review posted successfully",
+        insertedId: result.insertedId,
+      });
+    } catch (error) {
+      console.error(error);
+      res
+        .status(500)
+        .send({ success: false, message: "Failed to post review" });
+    }
+  });
 }
 
 run();
