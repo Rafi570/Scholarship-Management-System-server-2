@@ -141,84 +141,104 @@ async function run() {
         res.status(500).send({ message: "Invalid ID or server error" });
       }
     });
+      // review collection
+
+app.get("/review", async (req, res) => {
+  try {
+    const { scholarshipId, email } = req.query;
+
+    let query = {};
+
+    // Filter by scholarshipId
+    if (scholarshipId) {
+      query.scholarshipId = scholarshipId;
+    }
+
+    // Filter by email (optional)
+    if (email) {
+      query.userEmail = email;
+    }
+
+    const reviews = await reviewCollection
+      .find(query)
+      .sort({ postedAt: -1 })
+      .toArray();
+
+    res.send(reviews);
+  } catch (error) {
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+app.get("/review/:id", async (req, res) => {
+  const id = req.params.id;
+  const review = await reviewCollection.findOne({ _id: id });
+
+  if (!review) {
+    return res.status(404).send({ message: "Review not found" });
+  }
+
+  res.send(review);
+});
+
+
+app.post("/review", async (req, res) => {
+  try {
+    const reviewData = req.body;
+
+    const newReview = {
+      scholarshipId: reviewData.scholarshipId,   // IMPORTANT ⭐
+      userName: reviewData.userName,
+      userEmail: reviewData.userEmail,
+      userPhoto: reviewData.userPhoto || "",
+      universityName: reviewData.universityName,
+      scholarshipName: reviewData.scholarshipName,
+      rating: Number(reviewData.rating),
+      reviewText: reviewData.reviewText,
+      postedAt: new Date(),
+    };
+
+    const result = await reviewCollection.insertOne(newReview);
+
+    res.send({
+      success: true,
+      message: "Review posted successfully",
+      insertedId: result.insertedId,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Failed to post review" });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   } catch (err) {
     console.error(err);
   }
 
-  // review collection
 
-  app.get("/allreview", async (req, res) => {
-    try {
-      const { email } = req.query;
-      let query = {};
-
-      if (email) {
-        query.userEmail = email;
-      }
-
-      const reviews = await reviewCollection
-        .find(query)
-        .sort({ postedAt: -1 })
-        .toArray();
-
-      res.send(reviews);
-    } catch (error) {
-      res.status(500).send({ message: "Server error" });
-    }
-  });
-
-  app.get("/review/:id", async (req, res) => {
-    const id = req.params.id;
-
-    try {
-      const reviewById = await reviewCollection.findOne({
-        _id: new ObjectId(id),
-      });
-
-      if (reviewById) {
-        return res.send(reviewById);
-      }
-    } catch (error) {}
-    const reviewsByEmail = await reviewCollection
-      .find({ userEmail: id })
-      .sort({ postedAt: -1 })
-      .toArray();
-    if (reviewsByEmail.length === 0) {
-      return res.status(404).send({ message: "No review found" });
-    }
-
-    res.send(reviewsByEmail);
-  });
-
-  app.post("/review", async (req, res) => {
-    try {
-      const reviewData = req.body;
-
-      const newReview = {
-        userName: reviewData.userName,
-        userEmail: reviewData.userEmail,
-        userPhoto: reviewData.userPhoto || "", // না থাকলে খালি
-        universityName: reviewData.universityName,
-        scholarshipName: reviewData.scholarshipName || "General Review",
-        rating: Number(reviewData.rating), // 1 থেকে 5
-        reviewText: reviewData.reviewText,
-        postedAt: new Date(),
-      };
-
-      const result = await reviewCollection.insertOne(newReview);
-
-      res.send({
-        success: true,
-        message: "Review posted successfully",
-        insertedId: result.insertedId,
-      });
-    } catch (error) {
-      console.error(error);
-      res
-        .status(500)
-        .send({ success: false, message: "Failed to post review" });
-    }
-  });
 }
 
 run();
