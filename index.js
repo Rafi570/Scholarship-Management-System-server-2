@@ -149,7 +149,7 @@ async function run() {
     });
     // review collection
 
-    app.get("/review", async (req, res) => {
+    app.get("/review", verifyToken, async (req, res) => {
       try {
         const { scholarshipId, email } = req.query;
 
@@ -223,6 +223,44 @@ async function run() {
 
       const result = await reviewCollection.deleteOne(query);
       res.send(result);
+    });
+    const { ObjectId } = require("mongodb"); // নিশ্চিতভাবে import
+
+    app.patch("/review/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { reviewText, rating } = req.body;
+
+        if (!reviewText && rating === undefined) {
+          return res
+            .status(400)
+            .send({ success: false, message: "Nothing to update" });
+        }
+
+        const updateFields = {};
+        if (reviewText) updateFields.reviewText = reviewText;
+        if (rating !== undefined) updateFields.rating = Number(rating);
+        updateFields.postedAt = new Date();
+
+        const result = await reviewCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateFields }
+        );
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Review not found or no changes made",
+          });
+        }
+
+        res.send({ success: true, message: "Review updated successfully" });
+      } catch (error) {
+        console.error(error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to update review" });
+      }
     });
   } catch (err) {
     console.error(err);
