@@ -74,6 +74,26 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     });
+    app.get("/users", async (req, res) => {
+      try {
+        const { email } = req.query; // query parameter থেকে email নাও
+        let query = {};
+
+        if (email) {
+          query.email = email;
+        }
+
+        const users = await userCollection
+          .find(query)
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.send(users);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email;
       const query = { email };
@@ -129,9 +149,18 @@ async function run() {
         .sort({ scholarshipPostDate: -1 })
         .toArray();
 
-      res.send(result); // এখন আর এরর আসবে না
+      res.send(result);
     });
-    // 6934201901492016fbc39033
+    app.post("/scholarship", async (req, res) => {
+      try {
+        const data = req.body;
+        const result = await universityCollection.insertOne(data);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to add scholarship" });
+      }
+    });
+
     app.get("/scholarships/:id", async (req, res) => {
       try {
         const id = req.params.id;
