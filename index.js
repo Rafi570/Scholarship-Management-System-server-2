@@ -74,7 +74,7 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     });
-    app.get("/users", async (req, res) => {
+    app.get("/users",verifyToken, async (req, res) => {
       try {
         const { email } = req.query; // query parameter থেকে email নাও
         let query = {};
