@@ -178,7 +178,7 @@ async function run() {
 
     app.get("/review/:id", async (req, res) => {
       const id = req.params.id;
-      const review = await reviewCollection.findOne({ _id: id });
+      const review = await reviewCollection.findOne({ _id: new ObjectId(id) });
 
       if (!review) {
         return res.status(404).send({ message: "Review not found" });
@@ -216,6 +216,13 @@ async function run() {
           .status(500)
           .send({ success: false, message: "Failed to post review" });
       }
+    });
+    app.delete("/review/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+
+      const result = await reviewCollection.deleteOne(query);
+      res.send(result);
     });
   } catch (err) {
     console.error(err);
