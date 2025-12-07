@@ -30,7 +30,7 @@ const verifyToken = async (req, res, next) => {
   try {
     const idToken = token.split(" ")[1];
     const decoded = await admin.auth().verifyIdToken(idToken);
-    // console.log("decoded in the token", decoded);
+    console.log("decoded in the token", decoded);
     req.decoded_email = decoded.email;
     next();
   } catch (err) {
@@ -73,6 +73,12 @@ async function run() {
 
       const result = await userCollection.insertOne(user);
       res.send(result);
+    });
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+      res.send({ role: user?.role || "student" });
     });
 
     // university related Api
@@ -141,104 +147,79 @@ async function run() {
         res.status(500).send({ message: "Invalid ID or server error" });
       }
     });
-      // review collection
+    // review collection
 
-app.get("/review", async (req, res) => {
-  try {
-    const { scholarshipId, email } = req.query;
+    app.get("/review", async (req, res) => {
+      try {
+        const { scholarshipId, email } = req.query;
 
-    let query = {};
+        let query = {};
 
-    // Filter by scholarshipId
-    if (scholarshipId) {
-      query.scholarshipId = scholarshipId;
-    }
+        // Filter by scholarshipId
+        if (scholarshipId) {
+          query.scholarshipId = scholarshipId;
+        }
 
-    // Filter by email (optional)
-    if (email) {
-      query.userEmail = email;
-    }
+        // Filter by email (optional)
+        if (email) {
+          query.userEmail = email;
+        }
 
-    const reviews = await reviewCollection
-      .find(query)
-      .sort({ postedAt: -1 })
-      .toArray();
+        const reviews = await reviewCollection
+          .find(query)
+          .sort({ postedAt: -1 })
+          .toArray();
 
-    res.send(reviews);
-  } catch (error) {
-    res.status(500).send({ message: "Server error" });
-  }
-});
-
-app.get("/review/:id", async (req, res) => {
-  const id = req.params.id;
-  const review = await reviewCollection.findOne({ _id: id });
-
-  if (!review) {
-    return res.status(404).send({ message: "Review not found" });
-  }
-
-  res.send(review);
-});
-
-
-app.post("/review", async (req, res) => {
-  try {
-    const reviewData = req.body;
-
-    const newReview = {
-      scholarshipId: reviewData.scholarshipId,   // IMPORTANT ⭐
-      userName: reviewData.userName,
-      userEmail: reviewData.userEmail,
-      userPhoto: reviewData.userPhoto || "",
-      universityName: reviewData.universityName,
-      scholarshipName: reviewData.scholarshipName,
-      rating: Number(reviewData.rating),
-      reviewText: reviewData.reviewText,
-      postedAt: new Date(),
-    };
-
-    const result = await reviewCollection.insertOne(newReview);
-
-    res.send({
-      success: true,
-      message: "Review posted successfully",
-      insertedId: result.insertedId,
+        res.send(reviews);
+      } catch (error) {
+        res.status(500).send({ message: "Server error" });
+      }
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ success: false, message: "Failed to post review" });
-  }
-});
 
+    app.get("/review/:id", async (req, res) => {
+      const id = req.params.id;
+      const review = await reviewCollection.findOne({ _id: id });
 
+      if (!review) {
+        return res.status(404).send({ message: "Review not found" });
+      }
 
+      res.send(review);
+    });
 
+    app.post("/review", async (req, res) => {
+      try {
+        const reviewData = req.body;
 
+        const newReview = {
+          scholarshipId: reviewData.scholarshipId, // IMPORTANT ⭐
+          userName: reviewData.userName,
+          userEmail: reviewData.userEmail,
+          userPhoto: reviewData.userPhoto || "",
+          universityName: reviewData.universityName,
+          scholarshipName: reviewData.scholarshipName,
+          rating: Number(reviewData.rating),
+          reviewText: reviewData.reviewText,
+          postedAt: new Date(),
+        };
 
+        const result = await reviewCollection.insertOne(newReview);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        res.send({
+          success: true,
+          message: "Review posted successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error(error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to post review" });
+      }
+    });
   } catch (err) {
     console.error(err);
   }
-
-
 }
 
 run();
