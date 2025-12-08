@@ -504,10 +504,9 @@ async function run() {
         res.status(500).send({ success: false, message: "Server error." });
       }
     });
-    app.get("/application", async (req, res) => {
+    app.get("/application", verifyToken, async (req, res) => {
       try {
         const { email, status } = req.query;
-
 
         let query = {};
         if (email) query.userEmail = email;
@@ -515,13 +514,97 @@ async function run() {
 
         const applications = await applicationsCollection
           .find(query)
-          .sort({ applicationDate: -1 }) 
+          .sort({ applicationDate: -1 })
           .toArray();
 
         res.send({ success: true, data: applications });
       } catch (error) {
         console.error("GET /application error:", error);
         res.status(500).send({ success: false, message: "Server error." });
+      }
+    });
+    app.get("/application/:id", verifyToken, async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+          return res
+            .status(400)
+            .send({ success: false, message: "Invalid application ID." });
+        }
+
+        const application = await applicationsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!application) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Application not found." });
+        }
+
+        res.send({ success: true, data: application });
+      } catch (error) {
+        console.error("GET /application/:id error:", error);
+        res.status(500).send({ success: false, message: "Server error." });
+      }
+    });
+
+    app.delete("/application/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+          return res
+            .status(400)
+            .send({ success: false, message: "Invalid application ID" });
+        }
+
+        const result = await applicationsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount > 0) {
+          res.send({
+            success: true,
+            message: "Application deleted successfully",
+          });
+        } else {
+          res
+            .status(404)
+            .send({ success: false, message: "Application not found" });
+        }
+      } catch (error) {
+        console.error("DELETE /application/:id error:", error);
+        res.status(500).send({ success: false, message: "Server error" });
+      }
+    });
+
+    app.patch("/application/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updates = req.body;
+
+        Object.keys(updates).forEach((key) => {
+          if (updates[key] === "" || updates[key] === undefined)
+            delete updates[key];
+        });
+
+        const result = await applicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updates }
+        );
+
+        if (result.modifiedCount > 0)
+          return res.send({ success: true, message: "Application updated" });
+
+        res.status(404).send({
+          success: false,
+          message: "No update applied",
+        });
+      } catch (error) {
+        console.error("PATCH ERROR:", error);
+        res.status(500).send({ success: false, message: "Server error" });
       }
     });
   } catch (err) {
