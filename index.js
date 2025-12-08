@@ -60,6 +60,19 @@ async function run() {
     const universityCollection = db.collection("university");
     const reviewCollection = db.collection("review");
 
+    // admin role check
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+
+      if (!user || user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+
+      next();
+    };
+
     // user related Api
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -96,7 +109,7 @@ async function run() {
     //   }
     // });
 
-    app.get("/users", verifyToken, async (req, res) => {
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const { email, searchText, role } = req.query;
         let query = {};
@@ -227,6 +240,58 @@ async function run() {
 
       res.send(result);
     });
+    app.patch("/managesholarship/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updateData = req.body;
+
+        // Ensure id is valid ObjectId
+        const filter = { _id: new ObjectId(id) };
+
+        // Only send fields that exist
+        const updateDoc = { $set: updateData };
+
+        const result = await universityCollection.updateOne(filter, updateDoc);
+
+        res.send({
+          success: true,
+          message: "Scholarship updated successfully",
+          result,
+        });
+      } catch (error) {
+        console.error("PATCH Error:", error);
+        res.status(500).send({
+          success: false,
+          message: "Server error while updating scholarship",
+        });
+      }
+    });
+
+    app.delete("/managescholarshipdelete/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+
+        const result = await universityCollection.deleteOne(filter);
+
+        if (result.deletedCount > 0) {
+          res.send({
+            success: true,
+            message: "Scholarship deleted successfully",
+            result,
+          });
+        } else {
+          res.send({
+            success: false,
+            message: "Scholarship not found",
+          });
+        }
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ success: false, message: "Server error" });
+      }
+    });
+
     app.post("/scholarship", async (req, res) => {
       try {
         const data = req.body;
