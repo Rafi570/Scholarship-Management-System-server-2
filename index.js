@@ -38,7 +38,8 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-const uri = process.env.URI;
+// const uri = process.env.URI;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.lq5729d.mongodb.net/?appName=Cluster0`;
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -51,8 +52,8 @@ const client = new MongoClient(uri, {
 // Connect to MongoDB
 async function run() {
   try {
-    await client.connect();
-    console.log("Connected to MongoDB!");
+    // await client.connect();
+    // console.log("Connected to MongoDB!");
 
     const db = client.db("Scholarship-Management-System");
     const userCollection = db.collection("user");
@@ -74,13 +75,48 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     });
-    app.get("/users",verifyToken, async (req, res) => {
+    // app.get("/users",verifyToken, async (req, res) => {
+    //   try {
+    //     const { email } = req.query;
+    //     let query = {};
+
+    //     if (email) {
+    //       query.email = email;
+    //     }
+
+    //     const users = await userCollection
+    //       .find(query)
+    //       .sort({ createdAt: -1 })
+    //       .toArray();
+
+    //     res.send(users);
+    //   } catch (error) {
+    //     console.error(error);
+    //     res.status(500).send({ message: "Server error" });
+    //   }
+    // });
+
+    app.get("/users", verifyToken, async (req, res) => {
       try {
-        const { email } = req.query; // query parameter থেকে email নাও
+        const { email, searchText, role } = req.query;
         let query = {};
 
+        // filter by email
         if (email) {
           query.email = email;
+        }
+
+        // filter by role
+        if (role) {
+          query.role = role;
+        }
+
+        // search by displayName OR email
+        if (searchText) {
+          query.$or = [
+            { name: { $regex: searchText, $options: "i" } },
+            { email: { $regex: searchText, $options: "i" } },
+          ];
         }
 
         const users = await userCollection
@@ -94,11 +130,51 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
+
+    app.patch("/users/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { role } = req.body;
+
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: {
+            role: role,
+          },
+        };
+
+        const result = await userCollection.updateOne(filter, updateDoc);
+
+        res.send({
+          success: true,
+          message: "User role updated successfully",
+          result,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ success: false, message: "Server error" });
+      }
+    });
+
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email;
       const query = { email };
       const user = await userCollection.findOne(query);
       res.send({ role: user?.role || "student" });
+    });
+
+    app.delete("/users/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const filter = { _id: new ObjectId(id) };
+        const result = await userCollection.deleteOne(filter);
+
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
     });
 
     // university related Api
@@ -253,7 +329,6 @@ async function run() {
       const result = await reviewCollection.deleteOne(query);
       res.send(result);
     });
-    const { ObjectId } = require("mongodb"); // নিশ্চিতভাবে import
 
     app.patch("/review/:id", async (req, res) => {
       try {
