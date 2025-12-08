@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+const crypto = require("crypto");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const admin = require("firebase-admin");
@@ -38,6 +39,12 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
+function generateTrackingId(prefix = "APP") {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const random = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `${prefix}-${date}-${random}`;
+}
+
 // const uri = process.env.URI;
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.lq5729d.mongodb.net/?appName=Cluster0`;
 
@@ -59,6 +66,7 @@ async function run() {
     const userCollection = db.collection("user");
     const universityCollection = db.collection("university");
     const reviewCollection = db.collection("review");
+    const applicationsCollection = db.collection("applications");
 
     // admin role check
     const verifyAdmin = async (req, res, next) => {
@@ -429,6 +437,91 @@ async function run() {
         res
           .status(500)
           .send({ success: false, message: "Failed to update review" });
+      }
+    });
+
+    // application related api
+
+    app.post("/application", async (req, res) => {
+      try {
+        const {
+          scholarshipId,
+          userId,
+          userName,
+          userEmail,
+          universityName,
+          scholarshipCategory,
+          degree,
+          applicationFees,
+          serviceCharge,
+        } = req.body;
+
+        const trackingId = generateTrackingId("APP"); // generate tracking ID
+
+        // Basic validation
+        if (
+          !scholarshipId ||
+          !userId ||
+          !userName ||
+          !userEmail ||
+          !universityName
+        ) {
+          return res.status(400).send({ message: "Missing required fields." });
+        }
+
+        const newApplication = {
+          scholarshipId,
+          userId,
+          userName,
+          userEmail,
+          universityName,
+          scholarshipCategory: scholarshipCategory || "",
+          degree: degree || "",
+          applicationFees: Number(applicationFees) || 0,
+          serviceCharge: Number(serviceCharge) || 0,
+          applicationStatus: "pending",
+          paymentStatus: "unpaid",
+          applicationDate: new Date(),
+          feedback: "",
+          trackingId, // ← add it here
+        };
+
+        const result = await applicationsCollection.insertOne(newApplication);
+
+        if (result.insertedId) {
+          res.send({
+            success: true,
+            message: "Application submitted successfully.",
+            trackingId, // optional: send trackingId back to client
+          });
+        } else {
+          res
+            .status(500)
+            .send({ success: false, message: "Failed to submit application." });
+        }
+      } catch (error) {
+        console.error("POST /application error:", error);
+        res.status(500).send({ success: false, message: "Server error." });
+      }
+    });
+    app.get("/application", async (req, res) => {
+      try {
+        const { email, status } = req.query;
+
+
+        let query = {};
+        if (email) query.userEmail = email;
+        if (status) query.applicationStatus = status;
+
+        const applications = await applicationsCollection
+          .find(query)
+          .sort({ applicationDate: -1 }) 
+          .toArray();
+
+        res.send({ success: true, data: applications });
+      } catch (error) {
+        console.error("GET /application error:", error);
+        res.status(500).send({ success: false, message: "Server error." });
       }
     });
   } catch (err) {
