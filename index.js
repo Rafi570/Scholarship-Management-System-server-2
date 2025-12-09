@@ -366,6 +366,58 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
+    app.get("/review/role/modaretor", verifyToken, async (req, res) => {
+      try {
+        const { scholarshipId, email } = req.query;
+
+        let query = {};
+
+        // Filter by scholarshipId
+        if (scholarshipId) {
+          query.scholarshipId = scholarshipId;
+        }
+
+        // Filter by email (optional)
+        if (email) {
+          query.userEmail = email;
+        }
+
+        const reviews = await reviewCollection
+          .find(query)
+          .sort({ postedAt: -1 })
+          .toArray();
+
+        res.send(reviews);
+      } catch (error) {
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    const { ObjectId } = require("mongodb");
+
+    app.delete("/role/modaretor/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid ID" });
+        }
+
+        const result = await reviewCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Review not found" });
+        }
+
+        res.send({
+          success: true,
+          message: "Review deleted successfully",
+        });
+      } catch (error) {
+        res.status(500).send({ message: "Server error" });
+      }
+    });
 
     app.get("/review/:id", async (req, res) => {
       const id = req.params.id;
@@ -608,7 +660,6 @@ async function run() {
           { _id: new ObjectId(id) },
           { $set: updates }
         );
-        
 
         if (result.modifiedCount > 0)
           return res.send({ success: true, message: "Application updated" });
@@ -684,10 +735,120 @@ async function run() {
       }
     });
 
+    app.patch("/payment-success", async (req, res) => {
+      // 1. Get the session ID from the query parameters
+      const sessionId = req.query.session_id;
+
+      if (!sessionId) {
+        return res
+          .status(400)
+          .send({ error: "Missing session_id query parameter." });
+      }
+
+      try {
+        // 2. Retrieve the Stripe session details and assign it to the 'session' variable
+        // This is the CRITICAL fix:
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        // Extract transaction ID (payment_intent)
+        const transactionId = session.payment_intent;
+
+        // Use the tracking ID saved in metadata during session creation
+        const trackingId = session.metadata.trackingId;
+
+        // 3. Check if a payment record with this transaction ID already exists
+        const query = { transactionId: transactionId };
+        const paymentExist = await trackingsCollection.findOne(query);
+
+        if (paymentExist) {
+          // Already processed, send success response
+          return res.send({
+            success: true,
+            message: "Payment already processed and recorded.",
+            transactionId,
+            trackingId: paymentExist.trackingId,
+          });
+        }
+
+        // 4. Check if the payment was successful
+        if (session.payment_status === "paid") {
+          // Get the application details from the session metadata
+          const applicationId = session.metadata.applicationId;
+
+          // --- Update the Application Payment Status ---
+          // Ensure ObjectId is imported: const { ObjectId } = require('mongodb');
+          const applicationQuery = { _id: new ObjectId(applicationId) };
+          const applicationUpdate = {
+            $set: {
+              paymentStatus: "paid", // Update status to paid
+              applicationStatus: "completed",
+            },
+          };
+
+          // Execute the update
+          const resultApplicationUpdate =
+            await applicationsCollection.updateOne(
+              applicationQuery,
+              applicationUpdate
+            );
+
+          // --- Insert New Payment Record ---
+          const payment = {
+            amount: session.amount_total / 100,
+            currency: session.currency,
+            customerEmail: session.customer_email,
+
+            // Metadata from the session to save
+            applicationId: applicationId,
+            scholarshipId: session.metadata.scholarshipId,
+            scholarshipName: session.metadata.scholarshipName,
+            universityName: session.metadata.universityName,
+            userName: session.metadata.userName,
+
+            transactionId: transactionId,
+            paymentStatus: session.payment_status,
+            paidAt: new Date(),
+            trackingId: trackingId,
+          };
+
+          // Execute the payment insertion into the CORRECT collection
+          const resultPaymentInsert = await trackingsCollection.insertOne(
+            // <--- CORRECTED LINE
+            payment
+          );
+          // logTracking(trackingId, 'paid')
+
+          // 5. Send successful response
+          return res.send({
+            success: true,
+            message: "Payment and application status updated successfully.",
+            updateApplication: resultApplicationUpdate,
+            trackingId: trackingId,
+            transactionId: transactionId,
+            paymentInfo: resultPaymentInsert,
+          });
+        }
+
+        // If payment_status is not 'paid' (e.g., 'unpaid', 'no_payment_required')
+        return res.send({
+          success: false,
+          message: "Payment not successful or session status is not paid.",
+          paymentStatus: session.payment_status,
+        });
+      } catch (error) {
+        console.error("Error in payment-success endpoint:", error);
+        // Include the actual error in the 500 response for better debugging in development
+        res.status(500).send({
+          error: "Stripe success processing failed",
+          details: error.message,
+        });
+      }
+    });
+
     // Moderator related api
     app.patch("/rolemoderator/:id", async (req, res) => {
       const id = req.params.id;
-      const { action, feedback,trackingId } = req.body;
+      const { action, feedback, trackingId } = req.body;
 
       try {
         let updateData = {};
@@ -697,9 +858,8 @@ async function run() {
             applicationStatus: "approved",
             // paymentStatus: "paid",
             feedback: feedback || "",
-            
           };
-          logTracking(trackingId,"apply-approved")
+          logTracking(trackingId, "apply-approved");
         }
 
         if (action === "cancel") {
@@ -708,7 +868,7 @@ async function run() {
             // paymentStatus: "unpaid",
             feedback: feedback || "",
           };
-          logTracking(trackingId,'apply-canceled')
+          logTracking(trackingId, "apply-canceled");
         }
 
         const result = await applicationsCollection.updateOne(
