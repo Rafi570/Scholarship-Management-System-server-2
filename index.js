@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 const crypto = require("crypto");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 const admin = require("firebase-admin");
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
@@ -67,6 +68,7 @@ async function run() {
     const universityCollection = db.collection("university");
     const reviewCollection = db.collection("review");
     const applicationsCollection = db.collection("applications");
+    const trackingsCollection = db.collection("trackings");
 
     // admin role check
     const verifyAdmin = async (req, res, next) => {
@@ -79,6 +81,17 @@ async function run() {
       }
 
       next();
+    };
+    // logtracking
+    const logTracking = async (trackingId, status) => {
+      const log = {
+        trackingId,
+        status,
+        details: status.split("_").join(" "),
+        createdAt: new Date(),
+      };
+      const result = await trackingsCollection.insertOne(log);
+      return result;
     };
 
     // user related Api
@@ -483,8 +496,9 @@ async function run() {
           paymentStatus: "unpaid",
           applicationDate: new Date(),
           feedback: "",
-          trackingId, // ← add it here
+          trackingId,
         };
+        logTracking(trackingId, "apply_created");
 
         const result = await applicationsCollection.insertOne(newApplication);
 
@@ -504,7 +518,7 @@ async function run() {
         res.status(500).send({ success: false, message: "Server error." });
       }
     });
-    app.get("/application", verifyToken, async (req, res) => {
+    app.get("/application", async (req, res) => {
       try {
         const { email, status } = req.query;
 
@@ -594,6 +608,7 @@ async function run() {
           { _id: new ObjectId(id) },
           { $set: updates }
         );
+        
 
         if (result.modifiedCount > 0)
           return res.send({ success: true, message: "Application updated" });
@@ -605,6 +620,110 @@ async function run() {
       } catch (error) {
         console.error("PATCH ERROR:", error);
         res.status(500).send({ success: false, message: "Server error" });
+      }
+    });
+
+    // payment related api
+    app.post("/payment-checkout-session", async (req, res) => {
+      try {
+        const applicationInfo = req.body;
+
+        // Convert application fee to cents
+        const amount =
+          (parseInt(applicationInfo.applicationFees) +
+            parseInt(applicationInfo.serviceCharge)) *
+          100;
+
+        // Create Stripe Checkout Session
+        const session = await stripe.checkout.sessions.create({
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                unit_amount: amount,
+                product_data: {
+                  name: `Payment for: ${applicationInfo.scholarshipName}`,
+                  description: `University: ${applicationInfo.universityName}`,
+                },
+              },
+              quantity: 1,
+            },
+          ],
+
+          mode: "payment",
+
+          // ==============================
+          //         ALL METADATA
+          // ==============================
+          metadata: {
+            applicationId: applicationInfo._id,
+            scholarshipId: applicationInfo.scholarshipId,
+            scholarshipName: applicationInfo.scholarshipName,
+            universityName: applicationInfo.universityName,
+            postedUserEmail: applicationInfo.postedUserEmail,
+            userName: applicationInfo.userName,
+            userEmail: applicationInfo.userEmail,
+            degree: applicationInfo.degree,
+            category: applicationInfo.scholarshipCategory,
+            applicationFees: applicationInfo.applicationFees,
+            serviceCharge: applicationInfo.serviceCharge,
+            paymentStatus: "paid",
+            trackingId: applicationInfo.trackingId,
+          },
+
+          customer_email: applicationInfo.userEmail,
+
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+        });
+
+        res.send({ url: session.url });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: "Stripe Checkout Session Failed" });
+      }
+    });
+
+    // Moderator related api
+    app.patch("/rolemoderator/:id", async (req, res) => {
+      const id = req.params.id;
+      const { action, feedback,trackingId } = req.body;
+
+      try {
+        let updateData = {};
+
+        if (action === "approved") {
+          updateData = {
+            applicationStatus: "approved",
+            // paymentStatus: "paid",
+            feedback: feedback || "",
+            
+          };
+          logTracking(trackingId,"apply-approved")
+        }
+
+        if (action === "cancel") {
+          updateData = {
+            applicationStatus: "rejected",
+            // paymentStatus: "unpaid",
+            feedback: feedback || "",
+          };
+          logTracking(trackingId,'apply-canceled')
+        }
+
+        const result = await applicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData }
+        );
+
+        res.send({
+          success: true,
+          message: "Application updated successfully",
+          result,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ success: false, message: "Update failed" });
       }
     });
   } catch (err) {
