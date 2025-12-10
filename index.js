@@ -82,6 +82,18 @@ async function run() {
 
       next();
     };
+    const verifyModerator = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+      console.log("moda");
+
+      if (!user || user.role !== "moderator") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+
+      next();
+    };
     // logtracking
     const logTracking = async (trackingId, status) => {
       const log = {
@@ -190,7 +202,7 @@ async function run() {
       }
     });
 
-    app.get("/users/:email/role",verifyToken, async (req, res) => {
+    app.get("/users/:email/role", verifyToken, async (req, res) => {
       const email = req.params.email;
       const query = { email };
       const user = await userCollection.findOne(query);
@@ -393,7 +405,6 @@ async function run() {
       }
     });
 
-
     app.delete("/role/modaretor/:id", async (req, res) => {
       try {
         const id = req.params.id;
@@ -570,7 +581,7 @@ async function run() {
         res.status(500).send({ success: false, message: "Server error." });
       }
     });
-    app.get("/application", async (req, res) => {
+    app.get("/application", verifyToken, async (req, res) => {
       try {
         const { email, status } = req.query;
 
@@ -766,7 +777,8 @@ async function run() {
           customer_email: applicationInfo.userEmail,
 
           success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+          // cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled?trackingId=${applicationInfo.trackingId}`,
         });
         // console.log(session.url)
         res.send({ url: session.url });
@@ -778,6 +790,8 @@ async function run() {
 
     app.patch("/payment-success", async (req, res) => {
       // 1. Get the session ID from the query parameters
+      //     console.log("🔥 Payment endpoint hit");
+      // console.log("Query params:", req.query);
       const sessionId = req.query.session_id;
 
       if (!sessionId) {
@@ -790,7 +804,8 @@ async function run() {
         // 2. Retrieve the Stripe session details and assign it to the 'session' variable
         // This is the CRITICAL fix:
         const session = await stripe.checkout.sessions.retrieve(sessionId);
-
+        console.log(session);
+        // console.log("Metadata:", session.metadata);
         // Extract transaction ID (payment_intent)
         const transactionId = session.payment_intent;
 
@@ -885,6 +900,23 @@ async function run() {
         });
       }
     });
+    // app.post('/payment-cancel',async(req,res)=>{
+    //   logTracking('trackingId','payment-canceled')
+    // })
+
+    app.post("/payment-cancel", async (req, res) => {
+      const { trackingId } = req.body;
+      if (!trackingId)
+        return res.status(400).send({ error: "Missing trackingId" });
+
+      try {
+        const result = await logTracking(trackingId, "payment-canceled");
+        res.send({ success: true, result });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: "Failed to log canceled payment" });
+      }
+    });
 
     // Moderator related api
     app.patch("/rolemoderator/:id", async (req, res) => {
@@ -927,6 +959,28 @@ async function run() {
         res.status(500).send({ success: false, message: "Update failed" });
       }
     });
+    // tracking related api
+    app.get("/tracking", async (req, res) => {
+  try {
+    const trackingsCollection = db.collection("trackings");
+
+    // Fetch all tracking documents
+    const allTrackings = await trackingsCollection.find({}).toArray();
+
+    res.send({
+      success: true,
+      data: allTrackings,
+    });
+  } catch (err) {
+    console.error("Error fetching trackings:", err);
+    res.status(500).send({
+      success: false,
+      error: "Failed to fetch tracking records",
+    });
+  }
+});
+
+    app.get('tracking',async(req,res)=>{})
   } catch (err) {
     console.error(err);
   }
