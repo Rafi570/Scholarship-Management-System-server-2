@@ -130,7 +130,7 @@ async function run() {
     //   }
     // });
 
-    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
+    app.get("/users", verifyToken, async (req, res) => {
       try {
         const { email, searchText, role } = req.query;
         let query = {};
@@ -190,7 +190,7 @@ async function run() {
       }
     });
 
-    app.get("/users/:email/role", async (req, res) => {
+    app.get("/users/:email/role",verifyToken, async (req, res) => {
       const email = req.params.email;
       const query = { email };
       const user = await userCollection.findOne(query);
@@ -392,7 +392,7 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
-    const { ObjectId } = require("mongodb");
+
 
     app.delete("/role/modaretor/:id", async (req, res) => {
       try {
@@ -645,6 +645,47 @@ async function run() {
         res.status(500).send({ success: false, message: "Server error" });
       }
     });
+    app.patch("/application/feedback/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { feedback } = req.body; // frontend theke feedback ashbe
+
+        if (!feedback) {
+          return res.status(400).send({
+            success: false,
+            message: "Feedback is required",
+          });
+        }
+
+        const result = await applicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              feedback: feedback, // feedback update
+              updatedAt: new Date(), // optional
+            },
+          }
+        );
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Application not found or feedback unchanged",
+          });
+        }
+
+        res.send({
+          success: true,
+          message: "Feedback updated successfully",
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({
+          success: false,
+          message: "Server error",
+        });
+      }
+    });
 
     app.patch("/application/:id", async (req, res) => {
       try {
@@ -727,7 +768,7 @@ async function run() {
           success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
         });
-
+        // console.log(session.url)
         res.send({ url: session.url });
       } catch (error) {
         console.error(error);
