@@ -142,7 +142,7 @@ async function run() {
     //   }
     // });
 
-    app.get("/users", verifyToken, async (req, res) => {
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const { email, searchText, role } = req.query;
         let query = {};
@@ -234,45 +234,171 @@ async function run() {
       res.send(result);
     });
 
+    // server.js or routes file
+    // app.get("/scholarshipUniversity", async (req, res) => {
+    //   try {
+    //     let query = {};
+    //     const {
+    //       email,
+    //       universityName,
+    //       universityCountry,
+    //       universityWorldRank,
+    //       subjectCategory,
+    //       scholarshipCategory,
+    //       degree,
+    //       search,
+    //       sortBy, // New query parameter
+    //     } = req.query;
+
+    //     // Filters
+    //     if (email) query.postedUserEmail = email;
+    //     if (universityName) query.universityName = universityName;
+    //     if (universityCountry) query.universityCountry = universityCountry;
+    //     if (subjectCategory) query.subjectCategory = subjectCategory;
+    //     if (scholarshipCategory)
+    //       query.scholarshipCategory = scholarshipCategory;
+    //     if (degree) query.degree = degree;
+
+    //     if (universityWorldRank) {
+    //       query.universityWorldRank = { $lte: Number(universityWorldRank) };
+    //     }
+
+    //     if (search) {
+    //       query.$or = [
+    //         { scholarshipName: { $regex: search, $options: "i" } },
+    //         { universityName: { $regex: search, $options: "i" } },
+    //       ];
+    //     }
+
+    //     // Sorting logic
+    //     let sortObj = { scholarshipPostDate: -1 }; // default: newest first
+    //     switch (sortBy) {
+    //       case "nameAsc":
+    //         sortObj = { scholarshipName: 1 };
+    //         break;
+    //       case "nameDesc":
+    //         sortObj = { scholarshipName: -1 };
+    //         break;
+    //       case "rankAsc":
+    //         sortObj = { universityWorldRank: 1 };
+    //         break;
+    //       case "rankDesc":
+    //         sortObj = { universityWorldRank: -1 };
+    //         break;
+    //       case "postDateAsc":
+    //         sortObj = { scholarshipPostDate: 1 };
+    //         break;
+    //       case "postDateDesc":
+    //         sortObj = { scholarshipPostDate: -1 };
+    //         break;
+    //       default:
+    //         break; // keep default
+    //     }
+
+    //     const result = await universityCollection
+    //       .find(query)
+    //       .sort(sortObj)
+    //       .toArray();
+
+    //     res.send(result);
+    //   } catch (error) {
+    //     console.error("Error fetching scholarships:", error);
+    //     res.status(500).send({ error: "Internal Server Error" });
+    //   }
+    // });
     app.get("/scholarshipUniversity", async (req, res) => {
-      let query = {};
+      try {
+        let query = {};
+        const {
+          email,
+          universityName,
+          universityCountry,
+          universityWorldRank,
+          subjectCategory,
+          scholarshipCategory,
+          degree,
+          search,
+          sortBy,
+          page = 1, // Default page = 1
+          limit = 9, // Default 9 items per page
+        } = req.query;
 
-      const {
-        email,
-        universityName,
-        universityCountry,
-        universityWorldRank,
-        subjectCategory,
-        scholarshipCategory,
-        degree,
-        search,
-      } = req.query;
+        if (email) query.postedUserEmail = email;
+        if (universityName) query.universityName = universityName;
+        if (universityCountry) query.universityCountry = universityCountry;
+        if (subjectCategory) query.subjectCategory = subjectCategory;
+        if (scholarshipCategory)
+          query.scholarshipCategory = scholarshipCategory;
+        if (degree) query.degree = degree;
 
-      if (email) query.postedUserEmail = email;
-      if (universityName) query.universityName = universityName;
-      if (universityCountry) query.universityCountry = universityCountry;
-      if (subjectCategory) query.subjectCategory = subjectCategory;
-      if (scholarshipCategory) query.scholarshipCategory = scholarshipCategory;
-      if (degree) query.degree = degree;
+        if (universityWorldRank) {
+          query.universityWorldRank = { $lte: Number(universityWorldRank) };
+        }
 
-      if (universityWorldRank) {
-        query.universityWorldRank = { $lte: Number(universityWorldRank) };
+        if (search) {
+          query.$or = [
+            { scholarshipName: { $regex: search, $options: "i" } },
+            { universityName: { $regex: search, $options: "i" } },
+          ];
+        }
+
+        // Sorting
+        let sortObj = { scholarshipPostDate: -1 };
+        switch (sortBy) {
+          case "nameAsc":
+            sortObj = { scholarshipName: 1 };
+            break;
+          case "nameDesc":
+            sortObj = { scholarshipName: -1 };
+            break;
+          case "rankAsc":
+            sortObj = { universityWorldRank: 1 };
+            break;
+          case "rankDesc":
+            sortObj = { universityWorldRank: -1 };
+            break;
+          case "postDateAsc":
+            sortObj = { scholarshipPostDate: 1 };
+            break;
+          case "postDateDesc":
+            sortObj = { scholarshipPostDate: -1 };
+            break;
+        }
+
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const total = await universityCollection.countDocuments(query); // total docs
+        const result = await universityCollection
+          .find(query)
+          .sort(sortObj)
+          .skip(skip)
+          .limit(Number(limit))
+          .toArray();
+
+        res.send({
+          data: result,
+          total,
+          page: Number(page),
+          limit: Number(limit),
+        });
+      } catch (error) {
+        console.error("Error fetching scholarships:", error);
+        res.status(500).send({ error: "Internal Server Error" });
       }
-
-      if (search) {
-        query.$or = [
-          { scholarshipName: { $regex: search, $options: "i" } },
-          { universityName: { $regex: search, $options: "i" } },
-        ];
-      }
-
-      const result = await universityCollection
-        .find(query)
-        .sort({ scholarshipPostDate: -1 })
-        .toArray();
-
-      res.send(result);
     });
+app.get("/allScholarships",verifyToken,verifyAdmin, async (req, res) => {
+  try {
+    const result = await universityCollection
+      .find({}) // Emptly query finds all documents
+      .toArray();
+
+    res.send(result); // Send the array directly (not nested in an object)
+
+  } catch (error) {
+    console.error("Error fetching all scholarships:", error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
+});
     app.patch("/managesholarship/:id", async (req, res) => {
       try {
         const id = req.params.id;
@@ -900,9 +1026,6 @@ async function run() {
         });
       }
     });
-    // app.post('/payment-cancel',async(req,res)=>{
-    //   logTracking('trackingId','payment-canceled')
-    // })
 
     app.post("/payment-cancel", async (req, res) => {
       const { trackingId } = req.body;
@@ -961,26 +1084,32 @@ async function run() {
     });
     // tracking related api
     app.get("/tracking", async (req, res) => {
-  try {
-    const trackingsCollection = db.collection("trackings");
+      try {
+        // const trackingsCollection = db.collection("trackings");
 
-    // Fetch all tracking documents
-    const allTrackings = await trackingsCollection.find({}).toArray();
+        // Fetch all tracking documents
+        const allTrackings = await trackingsCollection.find({}).toArray();
 
-    res.send({
-      success: true,
-      data: allTrackings,
+        res.send({
+          success: true,
+          data: allTrackings,
+        });
+      } catch (err) {
+        console.error("Error fetching trackings:", err);
+        res.status(500).send({
+          success: false,
+          error: "Failed to fetch tracking records",
+        });
+      }
     });
-  } catch (err) {
-    console.error("Error fetching trackings:", err);
-    res.status(500).send({
-      success: false,
-      error: "Failed to fetch tracking records",
-    });
-  }
-});
 
-    app.get('tracking',async(req,res)=>{})
+    app.get("/trackings/:trackingId", async (req, res) => {
+      const trackingId = req.params.trackingId;
+      // console.log(trackingId)
+      const query = { trackingId };
+      const result = await trackingsCollection.find(query).toArray();
+      res.send(result);
+    });
   } catch (err) {
     console.error(err);
   }
