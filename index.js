@@ -386,19 +386,18 @@ async function run() {
         res.status(500).send({ error: "Internal Server Error" });
       }
     });
-app.get("/allScholarships",verifyToken,verifyAdmin, async (req, res) => {
-  try {
-    const result = await universityCollection
-      .find({}) // Emptly query finds all documents
-      .toArray();
+    app.get("/allScholarships", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const result = await universityCollection
+          .find({})
+          .toArray();
 
-    res.send(result); // Send the array directly (not nested in an object)
-
-  } catch (error) {
-    console.error("Error fetching all scholarships:", error);
-    res.status(500).send({ error: "Internal Server Error" });
-  }
-});
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching all scholarships:", error);
+        res.status(500).send({ error: "Internal Server Error" });
+      }
+    });
     app.patch("/managesholarship/:id", async (req, res) => {
       try {
         const id = req.params.id;
