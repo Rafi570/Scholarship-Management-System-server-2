@@ -1102,7 +1102,8 @@ async function run() {
       }
     });
 
-    app.get("/trackings/:trackingId",verifyIdToken, async (req, res) => {
+    app.get("/trackings/:trackingId", async (req, res) => {
+
       const trackingId = req.params.trackingId;
       // console.log(trackingId)
       const query = { trackingId };
